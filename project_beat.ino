@@ -29,11 +29,16 @@ const char single_char_id = SINGLE_CHAR_ID;
 
 // Hardware
 const int button_pin = D6;
-
-uint8_t led_state = LOW;
+const int led_pin = D5;
 
 uint8_t button_state;
 uint8_t previous_button_state = LOW;
+
+// Light values
+const int brightness_change_interval = 10;
+unsigned long previous_millis = 0;
+int brightness = 0;
+int is_on = 0;
 
 void connectToWifi();
 void connectToMQTTBroker();
@@ -50,8 +55,7 @@ void setup() {
 
   // Hardware setup
   pinMode(button_pin, INPUT);
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH); // HIGH means off
+  pinMode(led_pin, OUTPUT);
 }
 
 void connectToWifi() {
@@ -121,9 +125,9 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
   }
 
   if ((char) payload[1] == '1') {
-    digitalWrite(LED_BUILTIN, LOW); // LOW means on
+    is_on = 1;
   } else {
-    digitalWrite(LED_BUILTIN, HIGH);
+    is_on = 0;
   }
 }
 
@@ -137,12 +141,30 @@ void loop() {
   }
   mqtt_client.loop();
 
+  // Read button and send message
   button_state = digitalRead(button_pin);
-
   if (button_state != previous_button_state) {
     char state_to_send = button_state == HIGH ? '1' : '0';
     char payload[3] = {single_char_id, state_to_send, '\0'};
     mqtt_client.publish(mqtt_topic, payload);
     previous_button_state = button_state;
+  }
+
+  // LED
+  unsigned long current_millis = millis();
+
+  if (current_millis - previous_millis >= brightness_change_interval) {
+    previous_millis = current_millis;
+    
+    if (is_on) {
+      if (brightness < 255) {
+        brightness++;
+      }
+    } else {
+      if (brightness > 0) {
+        brightness--;
+      }
+    }
+    analogWrite(led_pin, brightness);
   }
 }
