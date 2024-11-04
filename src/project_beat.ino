@@ -30,15 +30,30 @@ const char single_char_id = SINGLE_CHAR_ID;
 // Hardware
 const int button_pin = D6;
 const int led_pin = D5;
+const int rotary_clk_pin = D3;
+const int rotary_dt_pin = D2;
+const int rotary_sw_pin = D1;
 
+// Button values
 uint8_t button_state;
 uint8_t previous_button_state = LOW;
 
+// Rotary encoder values
+const int positions_per_rotation = 40; // Estimate
+int current_clk_state;
+int prev_clk_state;
+int position = 0;
+int previous_position = 0;
+float speed;
+
+// Time
+unsigned long current_time, previous_time, delta_time;
+
 // Light values
-const int brightness_change_interval = 10;
-unsigned long previous_millis = 0;
-int brightness = 0;
-int is_on = 0;
+const int brightness_change_interval = 100;
+float brightnes = 0;
+float sensitivity = 3.0;
+float decay_rate = 0.4; // Percentage per second
 
 void connectToWifi();
 void connectToMQTTBroker();
@@ -56,6 +71,13 @@ void setup() {
   // Hardware setup
   pinMode(button_pin, INPUT);
   pinMode(led_pin, OUTPUT);
+
+  pinMode(rotary_clk_pin, INPUT);
+  pinMode(rotary_dt_pin, INPUT);
+  pinMode(rotary_sw_pin, INPUT_PULLUP);
+
+  prev_clk_state = digitalRead(rotary_clk_pin);
+  previous_time = millis();
 }
 
 void connectToWifi() {
@@ -124,14 +146,20 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
     return;
   }
 
-  if ((char) payload[1] == '1') {
-    is_on = 1;
-  } else {
-    is_on = 0;
-  }
+  float speed;
+  sscanf(&payload[1], "%f", &speed);
+
+  brightness += speed * sensitivity;
 }
 
-void loop() {
+void update_brightness() {
+  brightness -= decay_rate;
+  if (brightness > 255) brightness = 255;
+  if (brightness < 0) brightness = 0;
+  analogWrite(LED_BUILTIN, brightness);
+}
+
+void update_connection() {
   if (WiFi.status() != WL_CONNECTED) {
     connectToWifi();
   }
@@ -140,31 +168,59 @@ void loop() {
       connectToMQTTBroker();
   }
   mqtt_client.loop();
+}
 
-  // Read button and send message
+void button_action() {
   button_state = digitalRead(button_pin);
   if (button_state != previous_button_state) {
-    char state_to_send = button_state == HIGH ? '1' : '0';
-    char payload[3] = {single_char_id, state_to_send, '\0'};
-    mqtt_client.publish(mqtt_topic, payload);
-    previous_button_state = button_state;
-  }
+    // Do button stuff (change mode)
 
-  // LED
-  unsigned long current_millis = millis();
-
-  if (current_millis - previous_millis >= brightness_change_interval) {
-    previous_millis = current_millis;
-    
-    if (is_on) {
-      if (brightness < 255) {
-        brightness++;
-      }
-    } else {
-      if (brightness > 0) {
-        brightness--;
-      }
-    }
-    analogWrite(led_pin, brightness);
+    // char state_to_send = button_state == HIGH ? '1' : '0';
+    // char payload[3] = {single_char_id, state_to_send, '\0'};
+    // mqtt_client.publish(mqtt_topic, payload);
+    // previous_button_state = button_state;
   }
+}
+
+void loop() {
+  update_connection();
+
+  
+
+  // Update time
+  current_time = millis();
+  delta_time = current_time - previous_time
+  if (delta_time < brightness_change_interval) {
+    return
+  }
+  previous_time = current_time;
+
+  // Rotary encoder
+  // Read the current state of CLK
+  current_clk_state = digitalRead(rotary_clk_pin);
+
+  // Check if the CLK pin state has changed
+  if (current_clk_state == prev_clk_state) {
+    return;
+  }
+  position++;
+
+  float delta_rotation = float(position - previous_position) / float(positions_per_rotation)
+  speed = delta_roation / float(delta_time) * 1000; // Rotation per second (1000ms)
+  speed = ((float)(position - previous_position) / (float)delta_time) * 10;
+
+  char payload[3] = {single_char_id, state_to_send, '\0'};
+  mqtt_client.publish(mqtt_topic, payload);
+  previous_button_state = button_state;
+
+  prev_clk_state = current_clk_state;
+  previous_position = position;
+  // Update the lastStateCLK with the current state
+  
+
+  // // Check if the button is pressed
+  // if (digitalRead(SW) == LOW) {
+  //   Serial.println("Button pressed");
+  //   delay(200);  // Debouncing
+  // }
 }
