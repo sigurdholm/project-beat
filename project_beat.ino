@@ -2,6 +2,7 @@
 #include <PubSubClient.h>
 #include <time.h>
 
+#include "pins.h"
 #include "secrets.h"
 
 // WIFI
